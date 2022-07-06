@@ -27,14 +27,14 @@ const TableExists = `SELECT exists(
 const CreateTable = `CREATE TABLE ` + TableName + `
 (
     id         serial PRIMARY KEY,
-    url_key    character varying(64) UNIQUE,
+    auto_key   character varying(64) UNIQUE,
     custom_key character varying(64) UNIQUE,
     url        character varying(4096) NOT NULL CHECK ( LENGTH(url) > 0 ) UNIQUE,
     status     integer                 NOT NULL DEFAULT 0,
     expired_at timestamp,
     created_at timestamp               NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp               NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (url_key, url),
+    UNIQUE (auto_key, url),
     UNIQUE (custom_key, url)
 );`
 
@@ -96,22 +96,20 @@ func (db *Database) AddUrl(url string, customKey string) (string, error) {
 
 	var id uint64
 	if err := db.Connection.
-		QueryRow("SELECT id FROM "+TableName+" WHERE url = $1;", url).
+		QueryRow("SELECT id FROM "+TableName+" WHERE url = $1 LIMIT 1;", url).
 		Scan(&id); err != nil {
 		switch err {
 		case sql.ErrNoRows:
 			break
 		default:
-			log.Error(err)
 			return "", err
 		}
 	}
 
 	if id == 0 {
 		if err := db.Connection.
-			QueryRow("INSERT INTO "+TableName+" (url, custom_key) VALUES ($1, $2) RETURNING id;", url, customKey).
+			QueryRow("INSERT INTO "+TableName+" (url) VALUES ($1) RETURNING id;", url).
 			Scan(&id); err != nil {
-			log.Error(err)
 			return "", err
 		}
 	}
@@ -121,36 +119,41 @@ func (db *Database) AddUrl(url string, customKey string) (string, error) {
 	baseFix := 64 - bits.LeadingZeros64(id)
 	urlKey := strconv.FormatUint(id|sumKey<<baseFix, 36)
 
+	if customKey == "" {
+		customKey = urlKey
+	}
+
 	if _, err := db.Connection.
-		Query("UPDATE "+TableName+" SET url_key = $1 WHERE id = $2", urlKey, id); err != nil {
+		Query("UPDATE "+TableName+" SET auto_key = $1, custom_key = $2 WHERE id = $3", urlKey, customKey, id); err != nil {
 		return "", err
 	}
 
 	return urlKey, nil
 }
 
-func (db *Database) FindByKey(key string) (string, error) {
+func (db *Database) FindByKey(key string) (string, bool) {
 	var url string
-	err := db.Connection.QueryRow("SELECT url FROM "+TableName+" WHERE url_key = $1 OR custom_key = $1", key).Scan(&url)
+	err := db.Connection.QueryRow("SELECT url FROM "+TableName+" WHERE auto_key = $1 OR custom_key = $1 ORDER BY id DESC LIMIT 1", key).Scan(&url)
 	if err != nil {
 		switch err {
 		case sql.ErrNoRows:
-			return "", errors.New("url not found")
+			return "", false
 		default:
-			return "", err
+			log.Error(err)
+			return "", false
 		}
 	}
 
-	return url, nil
+	return url, true
 }
 
 func redirect(c echo.Context) error {
 	key := c.Param("key")
 
-	url, err := DB.FindByKey(key)
-	if err != nil {
-		log.Error(err)
-		return err
+	url, ok := DB.FindByKey(key)
+	if !ok {
+		log.Error("find key(" + key + ") error")
+		url = "/"
 	}
 
 	return c.Redirect(http.StatusMovedPermanently, url)
@@ -175,7 +178,6 @@ func addUrl(c echo.Context) error {
 	}
 	var urlKey string
 	if urlKey, err = DB.AddUrl(url.URL, url.CustomKey); err != nil {
-		c.Logger().Error(err)
 		return err
 	}
 
@@ -196,6 +198,7 @@ var ShortenPostgresConnectionString = "host=localhost port=5432 user=root passwo
 func init() {
 	if v := os.Getenv("SHORTEN_HOST"); v != "" {
 		ShortenHost = v
+		log.Info("host is set to " + ShortenHost)
 	}
 	if v := os.Getenv("SHORTEN_PORT"); v != "" {
 		p, err := strconv.Atoi(v)
@@ -203,12 +206,15 @@ func init() {
 			log.Fatal(err)
 		}
 		ShortenPort = p
+		log.Info(fmt.Sprintf("host is set to %d", ShortenPort))
 	}
 	if v := os.Getenv("SHORTEN_BASE_PATH"); v != "" {
-		ShortenBasePath = v
+		ShortenBasePath = "/" + strings.Trim(v, "/") + "/"
+		log.Info("base path is set to " + ShortenBasePath)
 	}
 	if v := os.Getenv("SHORTEN_POSTGRES"); v != "" {
 		ShortenPostgresConnectionString = v
+		log.Info("postgres is set")
 	}
 }
 
@@ -225,9 +231,24 @@ func main() {
 		}
 	}
 
-	e.Static(ShortenBasePath, "public")
-	e.File(ShortenBasePath+"favicon.ico", "public/favicon.ico")
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		code := http.StatusInternalServerError
+		if he, ok := err.(*echo.HTTPError); ok {
+			code = he.Code
+		}
+		c.Logger().Error(err)
+		if err = c.JSON(code, Result{
+			Code:    code,
+			Message: "System Error: " + err.Error(),
+		}); err != nil {
+			c.Logger().Error(err)
+		}
+	}
+
+	e.Static("/", "public")
+	e.File("/favicon.ico", "public/favicon.ico")
 	e.GET(ShortenBasePath+":key", redirect)
-	e.POST(ShortenBasePath+"api/add-url", addUrl)
+	e.POST("/api/add-url", addUrl)
+
 	e.Logger.Fatal(e.Start(fmt.Sprintf("%s:%d", ShortenHost, ShortenPort)))
 }

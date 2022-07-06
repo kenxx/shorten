@@ -19,16 +19,115 @@
                     <i class="bi bi-link-45deg"></i> Shorten
                 </div>
                 <div class="card-body">
-                    <h5 class="card-title">Special title treatment</h5>
-                    <p class="card-text">With supporting text below as a natural lead-in to additional content.</p>
-                    <a href="#" class="btn btn-primary">Go somewhere</a>
+                    <div class="mb-3">
+                        <label for="textarea-url" class="form-label">URL</label>
+                        <textarea class="form-control" id="textarea-url" placeholder="Long URL"
+                                  rows="3"></textarea>
+                    </div>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" id="input-short-url" disabled
+                               placeholder="Short URL"
+                               aria-label="Short URL" aria-describedby="button-short-url-copy">
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard();" type="button"
+                                id="button-short-url-copy" disabled><i
+                                class="bi bi-clipboard"></i> Copy
+                        </button>
+                    </div>
+                    <button type="button" onclick="getShortenUrl();" class="btn btn-primary"><i class="bi bi-link"></i>
+                        Shorten
+                    </button>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+<div class="toast-container top-0 end-0 p-3">
+    <div id="liveToast" class="toast text-bg-danger" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <strong class="me-auto">Bootstrap</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            Hello, world! This is a toast message.
         </div>
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2"
         crossorigin="anonymous"></script>
+<script>
+    function copyToClipboard() {
+        const inputShortUrl = window.document.querySelector("#input-short-url");
+        inputShortUrl.select();
+        inputShortUrl.setSelectionRange(0, 4096);
+
+        navigator.clipboard.writeText(inputShortUrl.value);
+    }
+
+    let toastID = 0
+    const toastContainer = document.querySelector(".toast-container")
+
+    function toast(title, content, bg = null) {
+        toastID++;
+        const t = document.createElement("div");
+        t.id = "toast-" + toastID;
+        t.attributes["role"] = "alert";
+        t.attributes["aria-live"] = "assertive";
+        t.attributes["aria-atomic"] = "true";
+        t.classList.add("toast")
+        if (bg) {
+            t.classList.add("text-bg-" + bg);
+        }
+        t.innerHTML = `<div class="toast-header">
+    <strong class="me-auto">${title}</strong>
+    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+</div><div class="toast-body">${content}</div>`;
+        toastContainer.appendChild(t)
+
+        const toast = new bootstrap.Toast(t)
+        toast.show()
+    }
+
+    function getShortenUrl() {
+        const inputShortUrl = window.document.querySelector("#input-short-url");
+        const inputCopyButton = window.document.querySelector("#button-short-url-copy");
+        const textareaUrl = window.document.querySelector("#textarea-url");
+        const origin = window.location.origin;
+        const path = window.location.pathname === "/" ? '' : window.location.pathname;
+        const url = `${origin}${path}/api/add-url`
+        fetch(url, {
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": JSON.stringify({
+                url: textareaUrl.value
+            }),
+            "method": "POST",
+        }).then(async r => {
+            const result = await r.json()
+            if (r.status !== 200) {
+                throw new Error(`HTTP Error ${r.status} ${r.statusText}: code=${result.code || -1}, message='${result.message || 'unknown'}'`)
+            }
+
+            return result
+        }).then(r => {
+            const code = Reflect.has(r, 'code') ? r.code : -1;
+            if (code !== 0) {
+                throw new Error(`Error response: ${code}, ${r.message || "unknown error"}`)
+            }
+            const uri = r.data.uri || ""
+            if (uri === "") {
+                throw new Error(`server returns empty uri`)
+            }
+            inputShortUrl.value = origin + path + uri
+            inputCopyButton.disabled = false
+            toast("Shorten DONE", "done with shorten", "success")
+        }).catch(err => {
+            toast("Shorten Error", err.message || "unknown error", "danger")
+            console.error(err)
+            inputCopyButton.disabled = true
+        });
+    }
+</script>
 </body>
 </html>

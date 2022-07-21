@@ -11,6 +11,7 @@ import (
 	"math/bits"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -194,6 +195,7 @@ var ShortenHost = ""
 var ShortenPort = 8080
 var ShortenBasePath = "/"
 var ShortenPostgresConnectionString = "host=localhost port=5432 user=root password=root database=root sslmode=disable"
+var ShortenPrefix = "./"
 
 func init() {
 	if v := os.Getenv("SHORTEN_HOST"); v != "" {
@@ -215,6 +217,10 @@ func init() {
 	if v := os.Getenv("SHORTEN_POSTGRES"); v != "" {
 		ShortenPostgresConnectionString = v
 		log.Info("postgres is set")
+	}
+	if v := os.Getenv("SHORTEN_PREFIX"); v != "" {
+		ShortenPrefix = v
+		log.Info("prefix is set")
 	}
 }
 
@@ -245,8 +251,8 @@ func main() {
 		}
 	}
 
-	e.Static("/", "public")
-	e.File("/favicon.ico", "public/favicon.ico")
+	e.Static("/", path.Join(ShortenPrefix, "public"))
+	e.File("/favicon.ico", path.Join(ShortenPrefix, "public/favicon.ico"))
 	e.GET(ShortenBasePath+":key", redirect)
 	e.POST("/api/add-url", addUrl)
 

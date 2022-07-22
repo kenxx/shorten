@@ -33,3 +33,4 @@ go build cmd/shorten/shorten.go
 
 - [ ] Memory Cache
 - [ ] Redis Cache
+- [x] Support [MyUrls](https://github.com/CareyWang/MyUrls) protocol.

@@ -191,6 +191,32 @@ func addUrl(c echo.Context) error {
 	})
 }
 
+func supportMyURLS(c echo.Context) error {
+	longURL := c.FormValue("longUrl")
+	shortKey := "" // we don't support custom key yet
+
+	response := make(map[string]interface{})
+	if longURL == "" {
+		response["Code"] = 0
+		response["Message"] = "pls enter long url"
+		return c.JSON(http.StatusBadRequest, &response)
+	}
+
+	var urlKey string
+	var err error
+	if urlKey, err = DB.AddUrl(longURL, shortKey); err != nil {
+		response["Code"] = 0
+		response["Message"] = "something bad"
+		return c.JSON(http.StatusBadRequest, &response)
+	}
+
+	response["Code"] = 1
+	response["Message"] = ""
+	response["LongUrl"] = longURL
+	response["ShortUrl"] = strings.TrimRight(ShortenBaseUrl, "/") + "/" + urlKey
+	return c.JSON(http.StatusOK, &response)
+}
+
 var ShortenHost = ""
 var ShortenPort = 8080
 var ShortenBasePath = "/"
@@ -263,30 +289,4 @@ func main() {
 	e.POST("/short", supportMyURLS)
 
 	e.Logger.Fatal(e.Start(fmt.Sprintf("%s:%d", ShortenHost, ShortenPort)))
-}
-
-func supportMyURLS(c echo.Context) error {
-	longURL := c.FormValue("longUrl")
-	shortKey := "" // we don't support custom key yet
-
-	response := make(map[string]interface{})
-	if longURL == "" {
-		response["Code"] = 0
-		response["Message"] = "pls enter long url"
-		return c.JSON(http.StatusBadRequest, &response)
-	}
-
-	var urlKey string
-	var err error
-	if urlKey, err = DB.AddUrl(longURL, shortKey); err != nil {
-		response["Code"] = 0
-		response["Message"] = "something bad"
-		return c.JSON(http.StatusBadRequest, &response)
-	}
-
-	response["Code"] = 1
-	response["Message"] = ""
-	response["LongUrl"] = longURL
-	response["ShortUrl"] = strings.TrimRight(ShortenBaseUrl, "/") + "/" + urlKey
-	return c.JSON(http.StatusOK, &response)
 }

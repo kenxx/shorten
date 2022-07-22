@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/labstack/echo/v4"
@@ -193,7 +194,10 @@ func addUrl(c echo.Context) error {
 
 func supportMyURLS(c echo.Context) error {
 	longURL := c.FormValue("longUrl")
-	shortKey := "" // we don't support custom key yet
+	shortKey := "" // we don't support custom key
+
+	_longUrl, _ := base64.StdEncoding.DecodeString(longURL)
+	longURL = string(_longUrl)
 
 	response := make(map[string]interface{})
 	if longURL == "" {

@@ -191,11 +191,38 @@ func addUrl(c echo.Context) error {
 	})
 }
 
+func supportMyURLS(c echo.Context) error {
+	longURL := c.FormValue("longUrl")
+	shortKey := "" // we don't support custom key yet
+
+	response := make(map[string]interface{})
+	if longURL == "" {
+		response["Code"] = 0
+		response["Message"] = "pls enter long url"
+		return c.JSON(http.StatusBadRequest, &response)
+	}
+
+	var urlKey string
+	var err error
+	if urlKey, err = DB.AddUrl(longURL, shortKey); err != nil {
+		response["Code"] = 0
+		response["Message"] = "something bad"
+		return c.JSON(http.StatusBadRequest, &response)
+	}
+
+	response["Code"] = 1
+	response["Message"] = ""
+	response["LongUrl"] = longURL
+	response["ShortUrl"] = strings.TrimRight(ShortenBaseUrl, "/") + "/" + urlKey
+	return c.JSON(http.StatusOK, &response)
+}
+
 var ShortenHost = ""
 var ShortenPort = 8080
 var ShortenBasePath = "/"
 var ShortenPostgresConnectionString = "host=localhost port=5432 user=root password=root database=root sslmode=disable"
 var ShortenPrefix = "./"
+var ShortenBaseUrl = ""
 
 func init() {
 	if v := os.Getenv("SHORTEN_HOST"); v != "" {
@@ -221,6 +248,10 @@ func init() {
 	if v := os.Getenv("SHORTEN_PREFIX"); v != "" {
 		ShortenPrefix = v
 		log.Info("prefix is set")
+	}
+	if v := os.Getenv("SHORTEN_BASE_URL"); v != "" {
+		ShortenBaseUrl = v
+		log.Info("base url is set")
 	}
 }
 
@@ -255,6 +286,7 @@ func main() {
 	e.File("/favicon.ico", path.Join(ShortenPrefix, "public/favicon.ico"))
 	e.GET(ShortenBasePath+":key", redirect)
 	e.POST("/api/add-url", addUrl)
+	e.POST("/short", supportMyURLS)
 
 	e.Logger.Fatal(e.Start(fmt.Sprintf("%s:%d", ShortenHost, ShortenPort)))
 }
